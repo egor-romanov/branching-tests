@@ -1,122 +1,4 @@
 --
--- TOC entry 443 (class 1255 OID 17233)
--- Name: features(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.features() RETURNS json
-    LANGUAGE sql
-    AS $$select json_agg(distinct ( 
-  case
-    when (r.feature != '') then r.feature
-    else r.parent_suite
-  end)) as features
-from results as r
-  inner join launches as l on r.launch_id = l.id
-  inner join versions as v on l.version_id = v.id
-  inner join projects as p on v.project_id = p.id
-where p.id = 1 and l.is_template = true$$;
-
-
-ALTER FUNCTION public.features() OWNER TO supabase_admin;
-
---
--- TOC entry 444 (class 1255 OID 17234)
--- Name: results(bigint); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.results(version bigint) RETURNS json
-    LANGUAGE sql
-    AS $$select json_agg(j) from (select r.name as name, r.feature, r.parent_suite, r.suite, r.sub_suite, r.status, 
-  l.name as launch_name, l.id as launch_id, l.created_at
-from results as r
-  join launches as l on r.launch_id = l.id
-where l.id in (
-  select ll.id 
-  from launches as ll
-  where ll.version_id = (version)
-  order by ll.created_at desc
-  limit 1
-  )
-) as j$$;
-
-
-ALTER FUNCTION public.results(version bigint) OWNER TO supabase_admin;
-
---
--- TOC entry 442 (class 1255 OID 17227)
--- Name: template(bigint); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.template(version bigint) RETURNS json
-    LANGUAGE sql
-    AS $$select json_agg(r.*)
-from results as r
-  inner join launches as l on r.launch_id = l.id 
-  inner join versions as v on l.version_id = v.id 
-  inner join projects as p on v.project_id = p.id 
-where l.is_template = true and p.id in (select versions.project_id from versions where versions.id = (version))$$;
-
-
-ALTER FUNCTION public.template(version bigint) OWNER TO supabase_admin;
-
---
--- TOC entry 445 (class 1255 OID 17231)
--- Name: version(); Type: FUNCTION; Schema: public; Owner: supabase_admin
---
-
-CREATE FUNCTION public.version() RETURNS json
-    LANGUAGE sql
-    AS $$select json_agg(v) from (
-select distinct on (v.id) 
-  v.id, v.version_name, v.repo, count(distinct l.id) as launch_count, v.created_at,
-  sq.last_launch_id, sq.last_launch_at, sq.is_template_launch, sq.launch_name, sq.results_number, 
-  sq.passed_number, sq.skipped_number, sq.failed_number, sq.undefined_number
-from versions as v
-  left join launches as l on l.version_id = v.id
-  left join (
-    select ll.id as last_launch_id, ll.created_at as last_launch_at, vv.id as vv_id, 
-    ll.is_template as is_template_launch, ll.name as launch_name,
-    count(distinct r.id) as results_number, rp.cnt as passed_number, rs.cnt as skipped_number,
-    rf.cnt as failed_number, ru.cnt as undefined_number
-    from launches as ll 
-      left join versions as vv on vv.id = ll.version_id
-      left join results as r on r.launch_id = ll.id
-      left join (
-        select count(distinct rr.id) as cnt, rr.launch_id 
-        from results as rr where rr.status = 'passed' 
-        group by rr.launch_id
-      ) as rp on rp.launch_id = ll.id
-      left join (
-        select count(distinct rr.id) as cnt, rr.launch_id 
-        from results as rr where rr.status = 'skipped' 
-        group by rr.launch_id
-      ) as rs on rs.launch_id = ll.id
-      left join (
-        select count(distinct rr.id) as cnt, rr.launch_id 
-        from results as rr where rr.status in ('failed', 'error')
-        group by rr.launch_id
-      ) as rf on rf.launch_id = ll.id
-      left join (
-        select count(distinct rr.id) as cnt, rr.launch_id 
-        from results as rr where rr.status not in ('passed', 'skipped', 'failed', 'error')
-        group by rr.launch_id
-      ) as ru on ru.launch_id = ll.id
-    group by ll.id, vv.id, rp.cnt, rs.cnt, rf.cnt, ru.cnt
-    order by ll.created_at desc
-  ) as sq on sq.vv_id = v.id
-where v.project_id = 1
-group by v.id, sq.last_launch_id, sq.last_launch_at, sq.is_template_launch, sq.launch_name, sq.results_number, 
-  sq.passed_number, sq.skipped_number, sq.failed_number, sq.undefined_number
-order by v.id, sq.last_launch_at desc) as v$$;
-
-
-ALTER FUNCTION public.version() OWNER TO supabase_admin;
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
-
---
 -- TOC entry 253 (class 1259 OID 17148)
 -- Name: versions; Type: TABLE; Schema: public; Owner: supabase_admin
 --
@@ -130,8 +12,6 @@ CREATE TABLE public.versions (
     secondary_id character varying DEFAULT 'suite'::character varying
 );
 
-
-ALTER TABLE public.versions OWNER TO supabase_admin;
 
 --
 -- TOC entry 2906 (class 0 OID 0)
@@ -175,8 +55,6 @@ CREATE TABLE public.launches (
 );
 
 
-ALTER TABLE public.launches OWNER TO supabase_admin;
-
 --
 -- TOC entry 258 (class 1259 OID 17218)
 -- Name: launches_id_seq; Type: SEQUENCE; Schema: public; Owner: supabase_admin
@@ -205,8 +83,6 @@ CREATE TABLE public.projects (
     owner_id uuid
 );
 
-
-ALTER TABLE public.projects OWNER TO supabase_admin;
 
 --
 -- TOC entry 256 (class 1259 OID 17168)
@@ -244,8 +120,6 @@ CREATE TABLE public.results (
     sub_suite character varying
 );
 
-
-ALTER TABLE public.results OWNER TO supabase_admin;
 
 --
 -- TOC entry 2725 (class 2606 OID 17159)
@@ -433,54 +307,6 @@ GRANT USAGE ON SCHEMA public TO service_role;
 
 
 --
--- TOC entry 2902 (class 0 OID 0)
--- Dependencies: 443
--- Name: FUNCTION features(); Type: ACL; Schema: public; Owner: supabase_admin
---
-
-GRANT ALL ON FUNCTION public.features() TO postgres;
-GRANT ALL ON FUNCTION public.features() TO anon;
-GRANT ALL ON FUNCTION public.features() TO authenticated;
-GRANT ALL ON FUNCTION public.features() TO service_role;
-
-
---
--- TOC entry 2903 (class 0 OID 0)
--- Dependencies: 444
--- Name: FUNCTION results(version bigint); Type: ACL; Schema: public; Owner: supabase_admin
---
-
-GRANT ALL ON FUNCTION public.results(version bigint) TO postgres;
-GRANT ALL ON FUNCTION public.results(version bigint) TO anon;
-GRANT ALL ON FUNCTION public.results(version bigint) TO authenticated;
-GRANT ALL ON FUNCTION public.results(version bigint) TO service_role;
-
-
---
--- TOC entry 2904 (class 0 OID 0)
--- Dependencies: 442
--- Name: FUNCTION template(version bigint); Type: ACL; Schema: public; Owner: supabase_admin
---
-
-GRANT ALL ON FUNCTION public.template(version bigint) TO postgres;
-GRANT ALL ON FUNCTION public.template(version bigint) TO anon;
-GRANT ALL ON FUNCTION public.template(version bigint) TO authenticated;
-GRANT ALL ON FUNCTION public.template(version bigint) TO service_role;
-
-
---
--- TOC entry 2905 (class 0 OID 0)
--- Dependencies: 445
--- Name: FUNCTION version(); Type: ACL; Schema: public; Owner: supabase_admin
---
-
-GRANT ALL ON FUNCTION public.version() TO postgres;
-GRANT ALL ON FUNCTION public.version() TO anon;
-GRANT ALL ON FUNCTION public.version() TO authenticated;
-GRANT ALL ON FUNCTION public.version() TO service_role;
-
-
---
 -- TOC entry 2907 (class 0 OID 0)
 -- Dependencies: 253
 -- Name: TABLE versions; Type: ACL; Schema: public; Owner: supabase_admin
@@ -580,10 +406,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENC
 -- Name: DEFAULT PRIVILEGES FOR SEQUENCES; Type: DEFAULT ACL; Schema: public; Owner: supabase_admin
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO postgres;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO anon;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO authenticated;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO service_role;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO postgres;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO anon;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO authenticated;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON SEQUENCES  TO service_role;
 
 
 --
@@ -602,10 +428,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIO
 -- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: supabase_admin
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO postgres;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO anon;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO authenticated;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO service_role;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO postgres;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO anon;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO authenticated;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON FUNCTIONS  TO service_role;
 
 
 --
@@ -624,7 +450,166 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: supabase_admin
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO postgres;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO anon;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO authenticated;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO service_role;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO postgres;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO anon;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO authenticated;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES  TO service_role;
+
+--
+-- TOC entry 443 (class 1255 OID 17233)
+-- Name: features(); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.features() RETURNS json
+    LANGUAGE sql
+    AS $$select json_agg(distinct ( 
+  case
+    when (r.feature != '') then r.feature
+    else r.parent_suite
+  end)) as features
+from results as r
+  inner join launches as l on r.launch_id = l.id
+  inner join versions as v on l.version_id = v.id
+  inner join projects as p on v.project_id = p.id
+where p.id = 1 and l.is_template = true$$;
+
+
+--
+-- TOC entry 444 (class 1255 OID 17234)
+-- Name: results(bigint); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.results(version bigint) RETURNS json
+    LANGUAGE sql
+    AS $$select json_agg(j) from (select r.name as name, r.feature, r.parent_suite, r.suite, r.sub_suite, r.status, 
+  l.name as launch_name, l.id as launch_id, l.created_at
+from results as r
+  join launches as l on r.launch_id = l.id
+where l.id in (
+  select ll.id 
+  from launches as ll
+  where ll.version_id = (version)
+  order by ll.created_at desc
+  limit 1
+  )
+) as j$$;
+
+
+--
+-- TOC entry 442 (class 1255 OID 17227)
+-- Name: template(bigint); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.template(version bigint) RETURNS json
+    LANGUAGE sql
+    AS $$select json_agg(r.*)
+from results as r
+  inner join launches as l on r.launch_id = l.id 
+  inner join versions as v on l.version_id = v.id 
+  inner join projects as p on v.project_id = p.id 
+where l.is_template = true and p.id in (select versions.project_id from versions where versions.id = (version))$$;
+
+
+--
+-- TOC entry 445 (class 1255 OID 17231)
+-- Name: version(); Type: FUNCTION; Schema: public; Owner: supabase_admin
+--
+
+CREATE FUNCTION public.version() RETURNS json
+    LANGUAGE sql
+    AS $$select json_agg(v) from (
+select distinct on (v.id) 
+  v.id, v.version_name, v.repo, count(distinct l.id) as launch_count, v.created_at,
+  sq.last_launch_id, sq.last_launch_at, sq.is_template_launch, sq.launch_name, sq.results_number, 
+  sq.passed_number, sq.skipped_number, sq.failed_number, sq.undefined_number
+from versions as v
+  left join launches as l on l.version_id = v.id
+  left join (
+    select ll.id as last_launch_id, ll.created_at as last_launch_at, vv.id as vv_id, 
+    ll.is_template as is_template_launch, ll.name as launch_name,
+    count(distinct r.id) as results_number, rp.cnt as passed_number, rs.cnt as skipped_number,
+    rf.cnt as failed_number, ru.cnt as undefined_number
+    from launches as ll 
+      left join versions as vv on vv.id = ll.version_id
+      left join results as r on r.launch_id = ll.id
+      left join (
+        select count(distinct rr.id) as cnt, rr.launch_id 
+        from results as rr where rr.status = 'passed' 
+        group by rr.launch_id
+      ) as rp on rp.launch_id = ll.id
+      left join (
+        select count(distinct rr.id) as cnt, rr.launch_id 
+        from results as rr where rr.status = 'skipped' 
+        group by rr.launch_id
+      ) as rs on rs.launch_id = ll.id
+      left join (
+        select count(distinct rr.id) as cnt, rr.launch_id 
+        from results as rr where rr.status in ('failed', 'error')
+        group by rr.launch_id
+      ) as rf on rf.launch_id = ll.id
+      left join (
+        select count(distinct rr.id) as cnt, rr.launch_id 
+        from results as rr where rr.status not in ('passed', 'skipped', 'failed', 'error')
+        group by rr.launch_id
+      ) as ru on ru.launch_id = ll.id
+    group by ll.id, vv.id, rp.cnt, rs.cnt, rf.cnt, ru.cnt
+    order by ll.created_at desc
+  ) as sq on sq.vv_id = v.id
+where v.project_id = 1
+group by v.id, sq.last_launch_id, sq.last_launch_at, sq.is_template_launch, sq.launch_name, sq.results_number, 
+  sq.passed_number, sq.skipped_number, sq.failed_number, sq.undefined_number
+order by v.id, sq.last_launch_at desc) as v$$;
+
+
+--
+-- TOC entry 2902 (class 0 OID 0)
+-- Dependencies: 443
+-- Name: FUNCTION features(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.features() TO postgres;
+GRANT ALL ON FUNCTION public.features() TO anon;
+GRANT ALL ON FUNCTION public.features() TO authenticated;
+GRANT ALL ON FUNCTION public.features() TO service_role;
+
+
+--
+-- TOC entry 2903 (class 0 OID 0)
+-- Dependencies: 444
+-- Name: FUNCTION results(version bigint); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.results(version bigint) TO postgres;
+GRANT ALL ON FUNCTION public.results(version bigint) TO anon;
+GRANT ALL ON FUNCTION public.results(version bigint) TO authenticated;
+GRANT ALL ON FUNCTION public.results(version bigint) TO service_role;
+
+
+--
+-- TOC entry 2904 (class 0 OID 0)
+-- Dependencies: 442
+-- Name: FUNCTION template(version bigint); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.template(version bigint) TO postgres;
+GRANT ALL ON FUNCTION public.template(version bigint) TO anon;
+GRANT ALL ON FUNCTION public.template(version bigint) TO authenticated;
+GRANT ALL ON FUNCTION public.template(version bigint) TO service_role;
+
+
+--
+-- TOC entry 2905 (class 0 OID 0)
+-- Dependencies: 445
+-- Name: FUNCTION version(); Type: ACL; Schema: public; Owner: supabase_admin
+--
+
+GRANT ALL ON FUNCTION public.version() TO postgres;
+GRANT ALL ON FUNCTION public.version() TO anon;
+GRANT ALL ON FUNCTION public.version() TO authenticated;
+GRANT ALL ON FUNCTION public.version() TO service_role;
+
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;

@@ -1,3 +1,1 @@
-alter extension "vector" update to '0.5.1';
-
-
+alter extension "vector" update to '0.6.2';
